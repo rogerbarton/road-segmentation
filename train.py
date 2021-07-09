@@ -17,6 +17,9 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.notebook import tqdm
 
+from helpers import GCN
+from crfseg import CRF
+
 
 
 # some constants
@@ -85,7 +88,7 @@ def image_to_patches(images, masks=None):
     labels = labels.reshape(-1).astype(np.float32)
     return patches, labels
 
-def create_submission(labels, test_filenames, submission_filename):
+def create_submission(test_pred, test_filenames, submission_filename):
     test_path='test_images/test_images'
     with open(submission_filename, 'w') as f:
         f.write('id,prediction\n')
@@ -251,6 +254,8 @@ class UNet(nn.Module):
         self.dec_blocks = nn.ModuleList([Block(in_ch, out_ch) for in_ch, out_ch in zip(dec_chs[:-1], dec_chs[1:])])  # decoder blocks
         self.head = nn.Sequential(nn.Conv2d(dec_chs[-1], 1, 1), nn.Sigmoid()) # 1x1 convolution for producing the output
 
+        # self.gcn = GCN(384, 384, 0.3, num_stage=0, node_n=384)
+
     def forward(self, x):
         # encode
         enc_features = []
@@ -264,7 +269,12 @@ class UNet(nn.Module):
             x = upconv(x)  # increase resolution
             x = torch.cat([x, feature], dim=1)  # concatenate skip features
             x = block(x)  # pass through the block
-        return self.head(x)  # reduce to 1 channel
+
+        return self.head(x) #.squeeze(dim=1)  # reduce to 1 channel,
+        
+        # retval = self.gcn(pre_postproc).unsqueeze(dim=1)
+
+        # return retval
 
 
 def patch_accuracy_fn(y_hat, y):
@@ -289,7 +299,16 @@ def morphological_postprocessing(imgs):
         out.append(img)
     return out
 
-
+def mse(predictions, targets):
+    """
+    Compute the MSE.
+    :param predictions: A tensor of shape (N, MAX_SEQ_LEN, -1)
+    :param targets: A tensor of shape (N, MAX_SEQ_LEN, -1)
+    :return: The MSE between predictions and targets.
+    """
+    diff = predictions - targets
+    loss_per_sample_and_seq = (diff * diff).sum(dim=-1)  # (N, F)
+    return loss_per_sample_and_seq.mean()
 
 def main():
     random.seed(17)
@@ -318,14 +337,21 @@ def main():
     val_dataset = ImageDataset('validation', device, use_patches=False, resize_to=(384, 384))
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
-    model = UNet().to(device)
-    loss_fn = nn.BCELoss()
+    #model = UNet().to(device)
+
+    model = nn.Sequential(
+        UNet(),  # your NN
+        CRF(n_spatial_dims=2)
+    ).to(device)
+    
+    loss_fn = nn.BCEWithLogitsLoss()
     metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
     optimizer = torch.optim.Adam(model.parameters())
-    n_epochs = 35
+    n_epochs = 80
     train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
 
     # predict on test set
+    test_path = 'test'
     test_filenames = (glob(test_path + '/*.png'))
     test_images = load_all_from_path(test_path)
     batch_size = test_images.shape[0]
