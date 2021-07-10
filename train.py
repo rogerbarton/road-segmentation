@@ -337,13 +337,20 @@ def main():
     test_pred = np.concatenate(test_pred, 0)
     test_pred= np.moveaxis(test_pred, 1, -1)  # CHW to HWC
     test_pred = np.stack([cv2.resize(img, dsize=size) for img in test_pred], 0)  # resize to original shape
+    
+    # morphological postprocessing
+    
+    kernel = np.ones((3,3), np.uint8)
+    test_pred = np.stack([cv2.erode(img, kernel, iterations=7) for img in test_pred], 0)
+    test_pred = np.stack([cv2.dilate(img, kernel, iterations=7) for img in test_pred], 0)
+    
     # now compute labels
     test_pred = test_pred.reshape((-1, size[0] // PATCH_SIZE, PATCH_SIZE, size[0] // PATCH_SIZE, PATCH_SIZE))
     test_pred = np.moveaxis(test_pred, 2, 3)
     test_pred = np.round(np.mean(test_pred, (-1, -2)) > CUTOFF)
-    create_submission(test_pred, test_filenames, submission_filename='unet_submission.csv')
+    # create_submission(test_pred, test_filenames, submission_filename='unet_submission.csv')
 
-    test_pred = morphological_postprocessing(test_pred)
+    #test_pred = morphological_postprocessing(test_pred)
 
     create_submission(test_pred, test_filenames, submission_filename='unet_postprocessed_submission.csv')
 
