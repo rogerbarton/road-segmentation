@@ -4,41 +4,29 @@ from glob import glob
 import torchvision.transforms.functional as F
 import argparse
 import math
+import os
 
 
-def flip(path):
-    image = Image.open(path)
-    mask_path = path.replace("images", "groundtruth")
-    mask = Image.open(mask_path)
-    img_name = path[:-4]
-    rnd = random.random()
-    # if rnd <= 0.5:
-    img_flip = F.hflip(image)
-    mask_flip = F.hflip(mask)
-    img_flip_name = img_name + "hflip" + ".png"
-    img_flip.save(img_flip_name)
-    maskstr = img_flip_name.replace("images", "groundtruth")
-    mask_flip.save(maskstr)
-    # else:
-    img_flip = F.vflip(image)
-    mask_flip = F.hflip(mask)
-    img_flip_name = img_name + "vflip" + ".png"
-    img_flip.save(img_flip_name)
-    maskstr = img_flip_name.replace("images", "groundtruth")
-    mask_flip.save(maskstr)
+def flip(image, mask):
+    out = []
+    if random.random() < 0.7:
+        out.append((F.hflip(image), F.hflip(mask)))
+    if random.random() < 0.7:
+        out.append((F.vflip(image), F.vflip(mask)))
+    if random.random() < 0.7:
+        out.append((F.vflip((F.hflip(image))), F.vflip((F.hflip(mask)))))
+    return out
 
 
-def rotate(path):
-    image = Image.open(path)
-    mask = path.replace("images", "groundtruth")
-    mask2 = Image.open(mask)
-    img2 = path[:-4]
+def rotate(image, mask):
+    out = []
     for i in range(8):
         rnd = random.random()
-        if rnd < 1.0:
+        if rnd < 0.5:
             angle = random.randint(45 * i, 45 * (i + 1))
-            image2 = F.rotate(image, angle, expand=True)
-            mask3 = F.rotate(mask2, angle, expand=True)
+            image2 = F.rotate(image, angle)
+            mask3 = F.rotate(mask, angle)
+            # out.append((F.rotate(image, angle, expand=True), F.rotate(mask, angle, expand=True)))
             # do a center crop and resize, in order to remove black borders
             # need to find biggest square
 
@@ -53,19 +41,11 @@ def rotate(path):
             cropped = F.resize(cropped, image.size)
             cropped_mask = F.center_crop(mask3, [length, length])
             cropped_mask = F.resize(cropped_mask, image.size)
-            img2 = path[:-4]
-            img2 = img2 + "_rot" + str(angle) + ".png"
-            cropped.save(img2)
-            maskstr = img2.replace("images", "groundtruth")
-            cropped_mask.save(maskstr)
+            out.append((cropped, cropped_mask))
+    return out
 
 
-def crop(path, max_crop_factor=2):
-    image = Image.open(path)
-    mask_path = path.replace("images", "groundtruth")
-    mask = Image.open(mask_path)
-    img_name = path[:-4]
-    mask_name = mask_path[:-4]
+def crop(image, mask, max_crop_factor=2):
     # image.show()
     # images are square anyway
     width_original = image.size[0]
@@ -82,26 +62,24 @@ def crop(path, max_crop_factor=2):
     mask_cropped = F.resized_crop(
         mask, top=top, left=left, height=height, width=width, size=image.size
     )
-    # print(f"_cropped_{top}_{left}_{height}x{width}.png")
-    image_cropped.save(img_name + f"_cropped_{top}_{left}_{height}x{width}.png")
-    mask_cropped.save(mask_name + f"_cropped_{top}_{left}_{height}x{width}.png")
-    # image_cropped.show()
-    # mask_cropped.show()
+    return [(image_cropped, mask_cropped)]
 
 
-def rotate_90(path):
-    image = Image.open(path)
-    mask_path = path.replace("images", "groundtruth")
-    mask = Image.open(mask_path)
-    img_name = path[:-4]
-    mask_name = mask_path[:-4]
-    # angle = random.choice([90,180,270])
+def rotate_90(image, mask):
+    out = []
     angles = [90, 180, 270]
     for a in angles:
         image_rot = F.rotate(image, a)
         mask_rot = F.rotate(mask, a)
-        image_rot.save(img_name + "_rot" + str(a) + ".png")
-        mask_rot.save(mask_name + "_rot" + str(a) + ".png")
+        out.append((image_rot, mask_rot))
+    return out
+
+
+def invert(image, mask):
+    if random.random() < 0.5:
+        return [(F.invert(image), mask)]
+    else:
+        return []
 
 
 def main():
@@ -111,24 +89,55 @@ def main():
         help="path of the training folder, containing groundtruth and images",
         default="./training",
     )
+    parser.add_argument(
+        "--clean", help="delete augmented data", default=False, action="store_true"
+    )
     parser.add_argument("--seed", help="fixed random seed", default=17, type=int)
     args = parser.parse_args()
-
+    if args.clean:
+        augmented_images = [
+            x for x in glob(args.training_path + "/images/*.png") if "_aug" in x
+        ]
+        augmented_masks = [
+            x for x in glob(args.training_path + "/groundtruth/*.png") if "_aug" in x
+        ]
+        for path in augmented_images + augmented_masks:
+            os.remove(path)
+        return
+    original_images = [
+        x for x in glob(args.training_path + "/images/*.png") if "aug" not in x
+    ]
     random.seed(args.seed)
-    for i, img in enumerate(glob(args.training_path + "/images/*.png")):
-        print(f"augmentint picture {i}")
-        flip(img)
-        rotate(img)
-    for i, img in enumerate(glob(args.training_path + "/images/*.png")):
-        # random crops on images made so far
-        print(f"cropping picture {i}")
-        for _ in range(4):
-            crop(img)
-        # invert
-        # noise
-        # combine
-        # maybe occlusion
-        # squish
+    for i, img in enumerate(original_images):
+        print(f"processing image {i} of {len(original_images)}")
+        image = Image.open(img)
+        mask_path = img.replace("images", "groundtruth")
+        mask = Image.open(mask_path)
+        img_name = img[:-4]
+        mask_name = mask_path[:-4]
+        images_to_process = [(image, mask)]
+        t = []
+        images_to_process.extend(invert(image, mask))
+        for (i, m) in images_to_process:
+            t += flip(i, m)
+        images_to_process += t
+        t = []
+        for (i, m) in images_to_process:
+            t += rotate(i, m)
+            t += rotate_90(i, m)
+        images_to_process.extend(t)
+        t = []
+        for (i, m) in images_to_process:
+            n_crops = random.randint(0, 4)
+            for _ in range(n_crops):
+                t += crop(i, m)
+        images_to_process.extend(t)
+        print(len(images_to_process))
+        for i, (img_aug, mask_aug) in enumerate(images_to_process):
+            img_aug.save(img_name + f"_aug{i}.png")
+            mask_aug.save(mask_name + f"_aug{i}.png")
+    # noise
+    # maybe occlusion
 
 
 if __name__ == "__main__":
