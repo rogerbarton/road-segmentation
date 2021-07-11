@@ -55,6 +55,4 @@ class RoadDataset(Dataset):
         if self.resize_to:
             image = F.resize(image, self.resize_to)
             mask = F.resize(mask, self.resize_to)
-        plt.imshow(image.permute(1, 2, 0))
-        plt.imshow(image.permute(1, 2, 0))
         return image, mask
