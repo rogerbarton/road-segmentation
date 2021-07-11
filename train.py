@@ -5,6 +5,7 @@ import os
 import re
 import cv2
 import random
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from glob import glob
@@ -18,7 +19,9 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.notebook import tqdm
 
 from helpers import GCN
-from crfseg import CRF
+
+import pydensecrf.densecrf as dcrf
+import pydensecrf.utils as utils
 
 
 
@@ -66,6 +69,11 @@ def load_all_from_path(path):
     # loads all HxW .pngs contained in path as a 4D np.array of shape (n_images, H, W, 3)
     # images are loaded as floats with values in the interval [0., 1.]
     return np.stack([np.array(Image.open(f)) for f in sorted(glob(path + '/*.png'))]).astype(np.float32) / 255.
+
+def load_all_from_path_resize(path, resize_to=(400, 400)):
+    return np.stack([cv2.resize(np.array(Image.open(f)), dsize=resize_to) for f in sorted(glob(path + '/*.png'))]).astype(np.float32) / 255.
+
+        
 
 def image_to_patches(images, masks=None):
     # takes in a 4D np.array containing images and (optionally) a 4D np.array containing the segmentation masks
@@ -118,13 +126,16 @@ class ImageDataset(torch.utils.data.Dataset):
         self._load_data()
 
     def _load_data(self):  # not very scalable, but good enough for now
-        self.x = load_all_from_path(os.path.join(self.path, 'images'))
-        self.y = load_all_from_path(os.path.join(self.path, 'groundtruth'))
+        self.x = load_all_from_path_resize(os.path.join(self.path, 'images'), self.resize_to)
+        self.y = load_all_from_path_resize(os.path.join(self.path, 'groundtruth'), self.resize_to)
+
+        """
         if self.use_patches:  # split each image into patches
             self.x, self.y = image_to_patches(self.x, self.y)
         elif self.resize_to != (self.x.shape[1], self.x.shape[2]):  # resize images
             self.x = np.stack([cv2.resize(img, dsize=self.resize_to) for img in self.x], 0)
             self.y = np.stack([cv2.resize(mask, dsize=self.resize_to) for mask in self.y], 0)
+        """
         self.x = np.moveaxis(self.x, -1, 1)  # pytorch works with CHW format instead of HWC
         self.n_samples = len(self.x)
 
@@ -138,6 +149,33 @@ class ImageDataset(torch.utils.data.Dataset):
     
     def __len__(self):
         return self.n_samples
+
+
+def dense_crf(img, output_probs):
+    MAX_ITER = 10
+    POS_W = 3
+    POS_XY_STD = 1
+    Bi_W = 4
+    Bi_XY_STD = 67
+    Bi_RGB_STD = 3
+
+    c = output_probs.shape[0]
+    h = output_probs.shape[1]
+    w = output_probs.shape[2]
+
+    U = utils.unary_from_softmax(output_probs)
+    U = np.ascontiguousarray(U)
+
+    img = np.ascontiguousarray(img)
+
+    d = dcrf.DenseCRF2D(w, h, c)
+    d.setUnaryEnergy(U)
+    d.addPairwiseGaussian(sxy=POS_XY_STD, compat=POS_W)
+    d.addPairwiseBilateral(sxy=Bi_XY_STD, srgb=Bi_RGB_STD, rgbim=img, compat=Bi_W)
+
+    Q = d.inference(MAX_ITER)
+    Q = np.array(Q).reshape((c, h, w))
+    return Q
 
 
 def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs):
@@ -156,10 +194,10 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         for k, _ in metric_fns.items():
             metrics[k] = []
             metrics['val_'+k] = []
-
-        pbar = tqdm(train_dataloader, desc=f'Epoch {epoch+1}/{n_epochs}')
+        
         # training
         model.train()
+        pbar = tqdm(train_dataloader, total = len(train_dataloader), file=sys.stdout, desc=f'Epoch {epoch+1}/{n_epochs}')
         for (x, y) in pbar:
             optimizer.zero_grad()  # zero out gradients
             y_hat = model(x)  # forward pass
@@ -177,13 +215,24 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         model.eval()
         with torch.no_grad():  # do not keep track of gradients
             for (x, y) in eval_dataloader:
-                y_hat = model(x)  # forward pass
-                loss = loss_fn(y_hat, y)
+                y_hat = model(x).detach().cpu().numpy()  # forward pass
+
+                # do crf
+                crf_output = np.zeros(y_hat.shape)
+                images = x.data.cpu().numpy().astype(np.uint8)
+                for i, (image, prob_map) in enumerate(zip(images, y_hat)):
+                    image = image.transpose(1, 2, 0)
+                    crf_output[i] = dense_crf(image, prob_map)
+
+                crf_double = torch.from_numpy(crf_output).type(torch.DoubleTensor)
+                y_double = y.type(torch.DoubleTensor)
+
+                loss = loss_fn(crf_double, y_double)
                 
                 # log partial metrics
                 metrics['val_loss'].append(loss.item())
                 for k, fn in metric_fns.items():
-                    metrics['val_'+k].append(fn(y_hat, y).item())
+                    metrics['val_'+k].append(fn(crf_double, y_double).item())
 
         # summarize metrics, log to tensorboard and display
         history[epoch] = {k: sum(v) / len(v) for k, v in metrics.items()}
@@ -316,7 +365,7 @@ def main():
     # paths to training and validation datasets
     train_path = 'training'
     val_path = 'validation'
-
+    """
     train_images = load_all_from_path(os.path.join(train_path, 'images'))
     train_masks = load_all_from_path(os.path.join(train_path, 'groundtruth'))
     val_images = load_all_from_path(os.path.join(val_path, 'images'))
@@ -328,23 +377,29 @@ def main():
 
     print("{0:0.2f}".format(sum(train_labels) / len(train_labels) * 100) + '% of training patches are labeled as 1.')
     print("{0:0.2f}".format(sum(val_labels) / len(val_labels) * 100) + '% of validation patches are labeled as 1.')
-
+    """
 
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # reshape the image to simplify the handling of skip connections and maxpooling
+    print("generating train dataset")
     train_dataset = ImageDataset('training', device, use_patches=False, resize_to=(384, 384))
+    print("generating validation dataset")
     val_dataset = ImageDataset('validation', device, use_patches=False, resize_to=(384, 384))
+    print("generating train dataloader")
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
+    print("generating validation dataloader")
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
-    #model = UNet().to(device)
+    model = UNet().to(device)
 
+    """
     model = nn.Sequential(
         UNet(),  # your NN
         CRF(n_spatial_dims=2)
     ).to(device)
+    """
     
-    loss_fn = nn.BCEWithLogitsLoss()
+    loss_fn = nn.BCELoss()
     metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
     optimizer = torch.optim.Adam(model.parameters())
     n_epochs = 80
@@ -359,7 +414,21 @@ def main():
     # we also need to resize the test images. This might not be the best ideas depending on their spatial resolution.
     test_images = np.stack([cv2.resize(img, dsize=(384, 384)) for img in test_images], 0)
     test_images = np_to_tensor(np.moveaxis(test_images, -1, 1), device)
-    test_pred = [model(t).detach().cpu().numpy() for t in test_images.unsqueeze(1)]
+
+    test_pred = []
+
+    for t in test_images.unsqueeze(1):
+        y_hat = model(t).detach().cpu().numpy()
+        crf_output = np.zeros(y_hat.shape)
+        images = t.data.cpu().numpy().astype(np.uint8)
+        for i, (image, prob_map) in enumerate(zip(images, y_hat)):
+            image = image.transpose(1, 2, 0)
+            crf_output[i] = dense_crf(image, prob_map)
+        y_hat = crf_output
+
+        test_pred.append(y_hat)
+
+
     test_pred = np.concatenate(test_pred, 0)
     test_pred= np.moveaxis(test_pred, 1, -1)  # CHW to HWC
     test_pred = np.stack([cv2.resize(img, dsize=size) for img in test_pred], 0)  # resize to original shape
