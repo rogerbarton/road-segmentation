@@ -104,40 +104,6 @@ def np_to_tensor(x, device):
         return torch.from_numpy(x).contiguous().pin_memory().to(device=device, non_blocking=True)
 
 
-class ImageDataset(torch.utils.data.Dataset):
-    # dataset class that deals with loading the data and making it available by index.
-
-    def __init__(self, path, device, use_patches=True, resize_to=(400, 400)):
-        self.path = path
-        self.device = device
-        self.use_patches = use_patches
-        self.resize_to=resize_to
-        self.x, self.y, self.n_samples = None, None, None
-        self._load_data()
-
-    def _load_data(self):  # not very scalable, but good enough for now
-        self.x = load_all_from_path(os.path.join(self.path, 'images'))
-        self.y = load_all_from_path(os.path.join(self.path, 'groundtruth'))
-        if self.use_patches:  # split each image into patches
-            self.x, self.y = image_to_patches(self.x, self.y)
-        elif self.resize_to != (self.x.shape[1], self.x.shape[2]):  # resize images
-            self.x = np.stack([cv2.resize(img, dsize=self.resize_to) for img in self.x], 0)
-            self.y = np.stack([cv2.resize(mask, dsize=self.resize_to) for mask in self.y], 0)
-        self.x = np.moveaxis(self.x, -1, 1)  # pytorch works with CHW format instead of HWC
-        self.n_samples = len(self.x)
-
-    def _preprocess(self, x, y):
-        # to keep things simple we will not apply transformations to each sample,
-        # but it would be a very good idea to look into preprocessing
-        return x, y
-
-    def __getitem__(self, item):
-        return self._preprocess(np_to_tensor(self.x[item], self.device), np_to_tensor(self.y[[item]], self.device))
-    
-    def __len__(self):
-        return self.n_samples
-
-
 def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs):
     # training loop
     logdir = './tensorboard/net'
@@ -295,26 +261,14 @@ def main():
     random.seed(17)
 
     # paths to training and validation datasets
-    # train_path = 'training'
-    # val_path = 'validation'
+    train_path = 'training'
+    val_path = 'validation'
     test_path = 'test'
-
-    # train_images = load_all_from_path(os.path.join(train_path, 'images'))
-    # train_masks = load_all_from_path(os.path.join(train_path, 'groundtruth'))
-    # val_images = load_all_from_path(os.path.join(val_path, 'images'))
-    # val_masks = load_all_from_path(os.path.join(val_path, 'groundtruth'))
-
-    # extract all patches and visualize those from the first image
-    # train_patches, train_labels = image_to_patches(train_images, train_masks)
-    # val_patches, val_labels = image_to_patches(val_images, val_masks)
-
-    # print("{0:0.2f}".format(sum(train_labels) / len(train_labels) * 100) + '% of training patches are labeled as 1.')
-    # print("{0:0.2f}".format(sum(val_labels) / len(val_labels) * 100) + '% of validation patches are labeled as 1.')
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # reshape the image to simplify the handling of skip connections and maxpooling
-    train_dataset = RoadDataset('training', device, resize_to=(384, 384))
-    val_dataset = RoadDataset('validation', device, augment=False, resize_to=(384, 384))
+    train_dataset = RoadDataset(train_path, device, resize_to=(384, 384))
+    val_dataset = RoadDataset(val_path, device, augment=False, resize_to=(384, 384))
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
     model = UNet().to(device)
