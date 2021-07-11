@@ -1,20 +1,22 @@
 import os
 import torch
 from torch.utils.data import Dataset
-from torchvision.io import read_image
 from glob import glob
 import numpy as np
 import torchvision.transforms.functional as F
 import random
 import matplotlib.pyplot as plt
+from PIL import Image
+import cv2
 
 
-def image_to_device(path, device):
+def np_to_tensor(x, device):
+    # allocates tensors from np.arrays
     if device == "cpu":
-        return read_image(path).cpu()
+        return torch.from_numpy(x).cpu()
     else:
         return (
-            read_image(path)
+            torch.from_numpy(x)
             .contiguous()
             .pin_memory()
             .to(device=device, non_blocking=True)
@@ -46,13 +48,18 @@ class RoadDataset(Dataset):
         return image, mask
 
     def __getitem__(self, idx):
-        image = image_to_device(self.img_list[idx], self.device)
-        mask = image_to_device(self.mask_list[idx], self.device)
+        image_np = np.array(Image.open(self.img_list[idx])).astype(np.float32) / 255
+        mask_np = np.array(Image.open(self.mask_list[idx])).astype(np.float32) / 255
+        if self.resize_to != (image_np.shape[0], image_np.shape[1]):  # resize images
+            image_np = cv2.resize(image_np, dsize=self.resize_to)
+            mask_np = cv2.resize(mask_np, dsize=self.resize_to)
+        image_np = np.moveaxis(image_np, -1, 0)  # pytorch needs CHW instead of HWC
+        mask_np = np.expand_dims(mask_np, axis=0) # needs to be 1HW
+        image = np_to_tensor(image_np, self.device)
+        mask = np_to_tensor(mask_np, self.device)
         if self.transforms:
             image = self.transforms(image)
         if self.augment:
             image, mask = self._augment(image, mask)
-        if self.resize_to:
-            image = F.resize(image, self.resize_to)
-            mask = F.resize(mask, self.resize_to)
+        
         return image, mask
