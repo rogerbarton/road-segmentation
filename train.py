@@ -17,6 +17,7 @@ import torch
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.notebook import tqdm
+from dataset import RoadDataset
 
 from helpers import GCN
 
@@ -264,7 +265,7 @@ class ImageDataset(torch.utils.data.Dataset):
         self.path = path
         self.device = device
         self.use_patches = use_patches
-        self.resize_to=resize_to
+        self.resize_to = resize_to
         self.x, self.y, self.n_samples = None, None, None
         self._load_data()
 
@@ -348,16 +349,6 @@ def morphological_postprocessing(imgs):
         out.append(img)
     return out
 
-def mse(predictions, targets):
-    """
-    Compute the MSE.
-    :param predictions: A tensor of shape (N, MAX_SEQ_LEN, -1)
-    :param targets: A tensor of shape (N, MAX_SEQ_LEN, -1)
-    :return: The MSE between predictions and targets.
-    """
-    diff = predictions - targets
-    loss_per_sample_and_seq = (diff * diff).sum(dim=-1)  # (N, F)
-    return loss_per_sample_and_seq.mean()
 
 def main():
     random.seed(17)
@@ -365,30 +356,13 @@ def main():
     # paths to training and validation datasets
     train_path = 'training'
     val_path = 'validation'
-    """
-    train_images = load_all_from_path(os.path.join(train_path, 'images'))
-    train_masks = load_all_from_path(os.path.join(train_path, 'groundtruth'))
-    val_images = load_all_from_path(os.path.join(val_path, 'images'))
-    val_masks = load_all_from_path(os.path.join(val_path, 'groundtruth'))
-
-    # extract all patches and visualize those from the first image
-    train_patches, train_labels = image_to_patches(train_images, train_masks)
-    val_patches, val_labels = image_to_patches(val_images, val_masks)
-
-    print("{0:0.2f}".format(sum(train_labels) / len(train_labels) * 100) + '% of training patches are labeled as 1.')
-    print("{0:0.2f}".format(sum(val_labels) / len(val_labels) * 100) + '% of validation patches are labeled as 1.')
-    """
-
+    test_path = 'test'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # reshape the image to simplify the handling of skip connections and maxpooling
-    print("generating train dataset")
-    train_dataset = ImageDataset('training', device, use_patches=False, resize_to=(384, 384))
-    print("generating validation dataset")
-    val_dataset = ImageDataset('validation', device, use_patches=False, resize_to=(384, 384))
-    print("generating train dataloader")
+    train_dataset = RoadDataset('training', device, resize_to=(384, 384))
+    val_dataset = RoadDataset('validation', device, augment=False, resize_to=(384, 384))
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
-    print("generating validation dataloader")
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
     model = UNet().to(device)
 
@@ -409,7 +383,7 @@ def main():
     test_path = 'test'
     test_filenames = (glob(test_path + '/*.png'))
     test_images = load_all_from_path(test_path)
-    batch_size = test_images.shape[0]
+    # batch_size = test_images.shape[0]
     size = test_images.shape[1:3]
     # we also need to resize the test images. This might not be the best ideas depending on their spatial resolution.
     test_images = np.stack([cv2.resize(img, dsize=(384, 384)) for img in test_images], 0)
@@ -430,12 +404,12 @@ def main():
 
 
     test_pred = np.concatenate(test_pred, 0)
-    test_pred= np.moveaxis(test_pred, 1, -1)  # CHW to HWC
+    test_pred = np.moveaxis(test_pred, 1, -1)  # CHW to HWC
     test_pred = np.stack([cv2.resize(img, dsize=size) for img in test_pred], 0)  # resize to original shape
     
     # morphological postprocessing
     
-    kernel = np.ones((3,3), np.uint8)
+    kernel = np.ones((3, 3), np.uint8)
     test_pred = np.stack([cv2.erode(img, kernel, iterations=7) for img in test_pred], 0)
     test_pred = np.stack([cv2.dilate(img, kernel, iterations=7) for img in test_pred], 0)
     
