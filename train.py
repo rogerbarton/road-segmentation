@@ -20,10 +20,6 @@ from tqdm.notebook import tqdm
 from dataset import RoadDataset
 import datetime
 
-import pydensecrf.densecrf as dcrf
-import pydensecrf.utils as utils
-
-
 
 # some constants
 PATCH_SIZE = 16  # pixels per side of square patches
