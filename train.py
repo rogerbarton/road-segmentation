@@ -273,7 +273,7 @@ def main():
     loss_fn = nn.BCELoss()
     metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
     optimizer = torch.optim.Adam(model.parameters())
-    n_epochs = 80
+    n_epochs = 40
 
     try:
         train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
