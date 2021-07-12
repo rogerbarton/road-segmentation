@@ -18,8 +18,7 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.notebook import tqdm
 from dataset import RoadDataset
-
-from helpers import GCN
+import datetime
 
 import pydensecrf.densecrf as dcrf
 import pydensecrf.utils as utils
@@ -97,16 +96,6 @@ def image_to_patches(images, masks=None):
     labels = labels.reshape(-1).astype(np.float32)
     return patches, labels
 
-def create_submission(test_pred, test_filenames, submission_filename):
-    test_path='test_images/test_images'
-    with open(submission_filename, 'w') as f:
-        f.write('id,prediction\n')
-        for fn, patch_array in zip(sorted(test_filenames), test_pred):
-            img_number = int(re.search(r"\d+", fn).group(0))
-            for i in range(patch_array.shape[0]):
-                for j in range(patch_array.shape[1]):
-                    f.write("{:03d}_{}_{},{}\n".format(img_number, j*PATCH_SIZE, i*PATCH_SIZE, int(patch_array[i, j])))
-
 def np_to_tensor(x, device):
     # allocates tensors from np.arrays
     if device == 'cpu':
@@ -152,24 +141,14 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         model.eval()
         with torch.no_grad():  # do not keep track of gradients
             for (x, y) in eval_dataloader:
-                y_hat = model(x).detach().cpu().numpy()  # forward pass
+                y_hat = model(x) # forward pass
 
-                # do crf
-                crf_output = np.zeros(y_hat.shape)
-                images = x.data.cpu().numpy().astype(np.uint8)
-                for i, (image, prob_map) in enumerate(zip(images, y_hat)):
-                    image = image.transpose(1, 2, 0)
-                    crf_output[i] = dense_crf(image, prob_map)
-
-                crf_double = torch.from_numpy(crf_output).type(torch.DoubleTensor)
-                y_double = y.type(torch.DoubleTensor)
-
-                loss = loss_fn(crf_double, y_double)
+                loss = loss_fn(y_hat, y)
                 
                 # log partial metrics
                 metrics['val_loss'].append(loss.item())
                 for k, fn in metric_fns.items():
-                    metrics['val_'+k].append(fn(crf_double, y_double).item())
+                    metrics['val_'+k].append(fn(y_hat, y).item())
 
         # summarize metrics, log to tensorboard and display
         history[epoch] = {k: sum(v) / len(v) for k, v in metrics.items()}
@@ -294,8 +273,15 @@ def main():
     loss_fn = nn.BCELoss()
     metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
     optimizer = torch.optim.Adam(model.parameters())
-    n_epochs = 35
-    train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
+    n_epochs = 80
+
+    try:
+        train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
+    except:
+        pass
+    finally:
+        print("saving model")
+        torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
 
 
 if __name__ == '__main__':
