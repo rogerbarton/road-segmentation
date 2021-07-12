@@ -5,6 +5,7 @@ import os
 import re
 import cv2
 import random
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from glob import glob
@@ -17,7 +18,7 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.notebook import tqdm
 from dataset import RoadDataset
-
+import datetime
 
 
 # some constants
@@ -65,6 +66,11 @@ def load_all_from_path(path):
     # images are loaded as floats with values in the interval [0., 1.]
     return np.stack([np.array(Image.open(f)) for f in sorted(glob(path + '/*.png'))]).astype(np.float32) / 255.
 
+def load_all_from_path_resize(path, resize_to=(400, 400)):
+    return np.stack([cv2.resize(np.array(Image.open(f)), dsize=resize_to) for f in sorted(glob(path + '/*.png'))]).astype(np.float32) / 255.
+
+        
+
 def image_to_patches(images, masks=None):
     # takes in a 4D np.array containing images and (optionally) a 4D np.array containing the segmentation masks
     # returns a 4D np.array with an ordered sequence of patches extracted from the image and (optionally) a np.array containing labels
@@ -85,16 +91,6 @@ def image_to_patches(images, masks=None):
     labels = np.mean(masks, (-1, -2, -3)) > CUTOFF  # compute labels
     labels = labels.reshape(-1).astype(np.float32)
     return patches, labels
-
-def create_submission(labels, test_filenames, submission_filename):
-    test_path='test_images/test_images'
-    with open(submission_filename, 'w') as f:
-        f.write('id,prediction\n')
-        for fn, patch_array in zip(sorted(test_filenames), test_pred):
-            img_number = int(re.search(r"\d+", fn).group(0))
-            for i in range(patch_array.shape[0]):
-                for j in range(patch_array.shape[1]):
-                    f.write("{:03d}_{}_{},{}\n".format(img_number, j*PATCH_SIZE, i*PATCH_SIZE, int(patch_array[i, j])))
 
 def np_to_tensor(x, device):
     # allocates tensors from np.arrays
@@ -120,7 +116,7 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         for k, _ in metric_fns.items():
             metrics[k] = []
             metrics['val_'+k] = []
-
+        
         pbar = tqdm(train_dataloader, desc=f'Epoch {epoch+1}/{n_epochs}')
         # training
         model.train()
@@ -141,7 +137,8 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         model.eval()
         with torch.no_grad():  # do not keep track of gradients
             for (x, y) in eval_dataloader:
-                y_hat = model(x)  # forward pass
+                y_hat = model(x) # forward pass
+
                 loss = loss_fn(y_hat, y)
                 
                 # log partial metrics
@@ -218,6 +215,8 @@ class UNet(nn.Module):
         self.dec_blocks = nn.ModuleList([Block(in_ch, out_ch) for in_ch, out_ch in zip(dec_chs[:-1], dec_chs[1:])])  # decoder blocks
         self.head = nn.Sequential(nn.Conv2d(dec_chs[-1], 1, 1), nn.Sigmoid()) # 1x1 convolution for producing the output
 
+        # self.gcn = GCN(384, 384, 0.3, num_stage=0, node_n=384)
+
     def forward(self, x):
         # encode
         enc_features = []
@@ -231,7 +230,12 @@ class UNet(nn.Module):
             x = upconv(x)  # increase resolution
             x = torch.cat([x, feature], dim=1)  # concatenate skip features
             x = block(x)  # pass through the block
-        return self.head(x)  # reduce to 1 channel
+
+        return self.head(x) #.squeeze(dim=1)  # reduce to 1 channel,
+        
+        # retval = self.gcn(pre_postproc).unsqueeze(dim=1)
+
+        # return retval
 
 
 def patch_accuracy_fn(y_hat, y):
@@ -245,16 +249,6 @@ def patch_accuracy_fn(y_hat, y):
 def accuracy_fn(y_hat, y):
     # computes classification accuracy
     return (y_hat.round() == y.round()).float().mean()
-
-def morphological_postprocessing(imgs):
-    out = []
-    for img in imgs:
-        kernel = np.ones((3,3), np.uint8)
-        img = np.float32(img)
-        img = cv2.erode(img, kernel, iterations=1)
-        img = cv2.dilate(img, kernel, iterations=1)
-        out.append(img)
-    return out
 
 
 def main():
@@ -275,37 +269,15 @@ def main():
     loss_fn = nn.BCELoss()
     metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
     optimizer = torch.optim.Adam(model.parameters())
-    n_epochs = 35
-    train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
+    n_epochs = 40
 
-    # predict on test set
-    test_filenames = (glob(test_path + '/*.png'))
-    test_images = load_all_from_path(test_path)
-    # batch_size = test_images.shape[0]
-    size = test_images.shape[1:3]
-    # we also need to resize the test images. This might not be the best ideas depending on their spatial resolution.
-    test_images = np.stack([cv2.resize(img, dsize=(384, 384)) for img in test_images], 0)
-    test_images = np_to_tensor(np.moveaxis(test_images, -1, 1), device)
-    test_pred = [model(t).detach().cpu().numpy() for t in test_images.unsqueeze(1)]
-    test_pred = np.concatenate(test_pred, 0)
-    test_pred = np.moveaxis(test_pred, 1, -1)  # CHW to HWC
-    test_pred = np.stack([cv2.resize(img, dsize=size) for img in test_pred], 0)  # resize to original shape
-    
-    # morphological postprocessing
-    
-    kernel = np.ones((3, 3), np.uint8)
-    test_pred = np.stack([cv2.erode(img, kernel, iterations=7) for img in test_pred], 0)
-    test_pred = np.stack([cv2.dilate(img, kernel, iterations=7) for img in test_pred], 0)
-    
-    # now compute labels
-    test_pred = test_pred.reshape((-1, size[0] // PATCH_SIZE, PATCH_SIZE, size[0] // PATCH_SIZE, PATCH_SIZE))
-    test_pred = np.moveaxis(test_pred, 2, 3)
-    test_pred = np.round(np.mean(test_pred, (-1, -2)) > CUTOFF)
-    # create_submission(test_pred, test_filenames, submission_filename='unet_submission.csv')
-
-    #test_pred = morphological_postprocessing(test_pred)
-
-    create_submission(test_pred, test_filenames, submission_filename='unet_postprocessed_submission.csv')
+    try:
+        train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
+    except:
+        pass
+    finally:
+        print("saving model")
+        torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
 
 
 if __name__ == '__main__':
