@@ -261,7 +261,7 @@ def main():
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # reshape the image to simplify the handling of skip connections and maxpooling
-    train_dataset = RoadDataset(train_path, device, resize_to=(384, 384))
+    train_dataset = RoadDataset(train_path, device, augment=True, resize_to=(384, 384))
     val_dataset = RoadDataset(val_path, device, augment=False, resize_to=(384, 384))
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
@@ -273,8 +273,8 @@ def main():
 
     try:
         train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
-    except:
-        pass
+    except Exception as e:
+        print(e)
     finally:
         print("saving model")
         torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
