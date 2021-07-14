@@ -13,8 +13,6 @@ def flip(image, mask):
         out.append((F.hflip(image), F.hflip(mask)))
     if random.random() < 0.7:
         out.append((F.vflip(image), F.vflip(mask)))
-    if random.random() < 0.7:
-        out.append((F.vflip((F.hflip(image))), F.vflip((F.hflip(mask)))))
     return out
 
 
@@ -45,15 +43,17 @@ def rotate(image, mask):
     return out
 
 
-def crop(image, mask, max_crop_factor=2):
+def crop(image, mask, max_crop_factor=0.85):
     # image.show()
     # images are square anyway
     width_original = image.size[0]
-    top = random.randint(0, width_original // max_crop_factor)
-    left = random.randint(0, width_original // max_crop_factor)
-    # height = random.randint(width_original // max_crop_factor, min(width_original - top, width_original-left))
-    height = random.randint(width_original // max_crop_factor, width_original - top)
-    width = random.randint(width_original // max_crop_factor, width_original - left)
+    crop_width_min = int(width_original * max_crop_factor)
+    # print(f"width: {width_original}, crop_min: {crop_width_min}")
+    top = random.randint(0, width_original - crop_width_min)
+    left = random.randint(0, width_original - crop_width_min)
+    # height = random.randint(crop_width_min, min(width_original - top, width_original-left))
+    height = random.randint(crop_width_min, width_original - top)
+    width = random.randint(crop_width_min, width_original - left)
     # maybe not resize
     image_cropped = F.resized_crop(
         image, top=top, left=left, height=height, width=width, size=image.size
@@ -83,6 +83,10 @@ def invert(image, mask):
 
 
 def main():
+    with open('notes.txt') as f:
+        harder_images = [int(val) for val in f.readlines()]
+    harder_images = [str(val).zfill(3) for val in harder_images]
+    harder_images = ['satImage_' + val + '.png' for val in harder_images]
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--training_path",
@@ -107,8 +111,13 @@ def main():
     original_images = [
         x for x in glob(args.training_path + "/images/*.png") if "aug" not in x
     ]
+    harder_images = [args.training_path + "/images/" + x for x in harder_images]
     random.seed(args.seed)
     for i, img in enumerate(original_images):
+        harder = False
+        if img in harder_images:
+            print("processing harder image")
+            harder = True
         print(f"processing image {i} of {len(original_images)}")
         image = Image.open(img)
         mask_path = img.replace("images", "groundtruth")
@@ -119,16 +128,26 @@ def main():
         t = []
         images_to_process.extend(invert(image, mask))
         for (i, m) in images_to_process:
-            t += flip(i, m)
+            n_flips = 1
+            if harder:
+                n_flips = random.randint(1,2)
+            for _ in range(n_flips):
+                t += flip(i, m)
         images_to_process += t
         t = []
         for (i, m) in images_to_process:
-            t += rotate(i, m)
-            t += rotate_90(i, m)
+            n_rots = 1
+            if harder:
+                n_rots = random.randint(1,2)
+            for _ in range(n_rots):
+                t += rotate(i, m)
+                t += rotate_90(i, m)
         images_to_process.extend(t)
         t = []
         for (i, m) in images_to_process:
             n_crops = random.randint(0, 4)
+            if harder:
+                n_crops = random.randint(1, 6)
             for _ in range(n_crops):
                 t += crop(i, m)
         images_to_process.extend(t)
