@@ -13,8 +13,8 @@ cutouts = None
 
 
 def extract_roads(img, mask):
-    img = np.asarray(img)
-    mask = np.asarray(mask)
+    img = np.array(img)
+    mask = np.array(mask)
     kernel = np.ones((5, 5), np.uint8)
     # mask_dilated = cv2.dilate(mask, kernel, iterations=3)
     # print(np.unique(mask, return_counts=True))
@@ -85,9 +85,9 @@ def main():
 
     for i, img in enumerate(original_images):
         print(f"processing image {i} of {len(original_images)}")
-        image = np.asarray(Image.open(img))
+        image = np.array(Image.open(img))
         mask_path = img.replace("images", "groundtruth")
-        mask = np.asarray(Image.open(mask_path))
+        mask = np.array(Image.open(mask_path))
         img_name = img[:-4]
         mask_name = mask_path[:-4]
         c, m, is_vertical = random.choice(cutouts)
@@ -108,8 +108,8 @@ def main():
             c = F.affine(c, angle=rot, translate=(0, shift), scale=1, shear=0)
             m = F.affine(m, angle=rot, translate=(0, shift), scale=1, shear=0)
 
-        c = np.asarray(c)
-        m = np.asarray(m)
+        c = np.array(c)
+        m = np.array(m)
         image[c != 0] = 0
         image = image + c
         aug_mask = (

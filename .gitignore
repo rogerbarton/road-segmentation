@@ -136,3 +136,6 @@ test/
 venv/
 .vscode
 tensorboard/
+
+# model outputs
+*.pth
