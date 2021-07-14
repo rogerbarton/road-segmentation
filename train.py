@@ -110,7 +110,7 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
     print('Model created with {} trainable parameters'.format(count_parameters(model)))
 
     for epoch in range(n_epochs):  # loop over the dataset multiple times
-
+        print("Running epoch " + str(epoch))
         # initialize metric list
         metrics = {'loss': [], 'val_loss': []}
         for k, _ in metric_fns.items():
@@ -159,10 +159,10 @@ class Block(nn.Module):
     # a repeating structure composed of two convolutional layers with batch normalization and ReLU activations
     def __init__(self, in_ch, out_ch):
         super().__init__()
-        self.block = nn.Sequential(nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, padding=1),
+        self.block = nn.Sequential(nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=5, padding=2),
                                    nn.ReLU(),
                                    nn.BatchNorm2d(out_ch),
-                                   nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, padding=1),
+                                   nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=5, padding=2),
                                    nn.ReLU())
 
     def forward(self, x):
@@ -266,18 +266,18 @@ def main():
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
     model = UNet().to(device)
-    loss_fn = nn.BCELoss()
+    loss_fn = nn.BCEWithLogitsLoss()
     metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
     optimizer = torch.optim.Adam(model.parameters())
     n_epochs = 40
 
-    try:
-        train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
-    except:
-        pass
-    finally:
-        print("saving model")
-        torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
+    #try:
+    train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
+    #except:
+    #    pass
+    #finally:
+    #    print("saving model")
+    #    torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
 
 
 if __name__ == '__main__':
