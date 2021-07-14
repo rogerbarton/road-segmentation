@@ -13,8 +13,6 @@ def flip(image, mask):
         out.append((F.hflip(image), F.hflip(mask)))
     if random.random() < 0.7:
         out.append((F.vflip(image), F.vflip(mask)))
-    if random.random() < 0.7:
-        out.append((F.vflip((F.hflip(image))), F.vflip((F.hflip(mask)))))
     return out
 
 
@@ -45,15 +43,17 @@ def rotate(image, mask):
     return out
 
 
-def crop(image, mask, max_crop_factor=2):
+def crop(image, mask, max_crop_factor=0.85):
     # image.show()
     # images are square anyway
     width_original = image.size[0]
-    top = random.randint(0, width_original // max_crop_factor)
-    left = random.randint(0, width_original // max_crop_factor)
-    # height = random.randint(width_original // max_crop_factor, min(width_original - top, width_original-left))
-    height = random.randint(width_original // max_crop_factor, width_original - top)
-    width = random.randint(width_original // max_crop_factor, width_original - left)
+    crop_width_min = int(width_original * max_crop_factor)
+    # print(f"width: {width_original}, crop_min: {crop_width_min}")
+    top = random.randint(0, width_original - crop_width_min)
+    left = random.randint(0, width_original - crop_width_min)
+    # height = random.randint(crop_width_min, min(width_original - top, width_original-left))
+    height = random.randint(crop_width_min, width_original - top)
+    width = random.randint(crop_width_min, width_original - left)
     # maybe not resize
     image_cropped = F.resized_crop(
         image, top=top, left=left, height=height, width=width, size=image.size
