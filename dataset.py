@@ -92,9 +92,9 @@ class RoadDataset(Dataset):
         mask = np_to_tensor(mask_np, self.device)
 
         # for visualizing:
-        _, axarr = plt.subplots(1, 2)
-        axarr[0].imshow(image.permute(1, 2, 0))
-        axarr[1].imshow(mask[0])
-        plt.show()
+        # _, axarr = plt.subplots(1, 2)
+        # axarr[0].imshow(image.permute(1, 2, 0))
+        # axarr[1].imshow(mask[0])
+        # plt.show()
 
         return image, mask
