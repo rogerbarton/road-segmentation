@@ -155,20 +155,6 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
     print('Finished Training')
 
 
-class Block(nn.Module):
-    # a repeating structure composed of two convolutional layers with batch normalization and ReLU activations
-    def __init__(self, in_ch, out_ch):
-        super().__init__()
-        self.block = nn.Sequential(nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=5, padding=2),
-                                   nn.ReLU(),
-                                   nn.BatchNorm2d(out_ch),
-                                   nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=5, padding=2),
-                                   nn.ReLU())
-
-    def forward(self, x):
-        return self.block(x)
-
-
 class ImageDataset(torch.utils.data.Dataset):
     # dataset class that deals with loading the data and making it available by index.
 
@@ -202,33 +188,77 @@ class ImageDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self.n_samples
 
+
+class Block(nn.Module):
+    # a repeating structure composed of two convolutional layers with batch normalization and ReLU activations
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.block = nn.Sequential(nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, padding=1),
+                                   nn.ReLU(),
+                                   nn.BatchNorm2d(out_ch),
+                                   nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, padding=1),
+                                   nn.ReLU())
+
+    def forward(self, x):
+        return self.block(x)
+
+
+class DecBlock(nn.Module):
+    # a repeating structure composed of two convolutional layers with batch normalization and ReLU activations
+    def __init__(self, in_ch, out_ch, mid_chan):
+        super().__init__()
+        self.block = nn.Sequential(nn.Conv2d(in_channels=in_ch, out_channels=mid_chan, kernel_size=3, padding=1),
+                                   nn.ReLU(),
+                                   nn.BatchNorm2d(mid_chan),
+                                   nn.Conv2d(in_channels=mid_chan, out_channels=out_ch, kernel_size=3, padding=1),
+                                   nn.ReLU(),
+                                   nn.BatchNorm2d(out_ch),
+                                   nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, padding=1),
+                                   nn.ReLU())
+
+    def forward(self, x):
+        return self.block(x)
+
         
 class UNet(nn.Module):
     # UNet-like architecture for single class semantic segmentation.
     def __init__(self, chs=(3,64,128,256,512,1024)):
         super().__init__()
         enc_chs = chs  # number of channels in the encoder
-        dec_chs = chs[::-1][:-1]  # number of channels in the decoder
+        dec_chs_upcon = chs[::-1][:-1]  # number of channels in the decoder
+        dec_chs = (1536, 768, 384, 192)
+        mid_chs = (1024, 512, 256, 128)
+        out_chs = (512, 256, 128, 64) # number of channels in the decoder
         self.enc_blocks = nn.ModuleList([Block(in_ch, out_ch) for in_ch, out_ch in zip(enc_chs[:-1], enc_chs[1:])])  # encoder blocks
         self.pool = nn.MaxPool2d(2)  # pooling layer (can be reused as it will not be trained)
-        self.upconvs = nn.ModuleList([nn.ConvTranspose2d(in_ch, out_ch, 2, 2) for in_ch, out_ch in zip(dec_chs[:-1], dec_chs[1:])])  # deconvolution
-        self.dec_blocks = nn.ModuleList([Block(in_ch, out_ch) for in_ch, out_ch in zip(dec_chs[:-1], dec_chs[1:])])  # decoder blocks
-        self.head = nn.Sequential(nn.Conv2d(dec_chs[-1], 1, 1), nn.Sigmoid()) # 1x1 convolution for producing the output
+        self.upconvs = nn.ModuleList([nn.ConvTranspose2d(in_ch, out_ch, 2, 2) for in_ch, out_ch in zip(dec_chs_upcon[:-1], dec_chs_upcon[1:])])  # deconvolution
+        self.dec_blocks = nn.ModuleList([DecBlock(in_ch, out_ch, mid_ch) for in_ch, out_ch, mid_ch in zip(dec_chs, out_chs, mid_chs)])  # decoder blocks
+        self.head = nn.Sequential(nn.Conv2d(dec_chs_upcon[-1], 1, 1), nn.Sigmoid()) # 1x1 convolution for producing the output
+
+        self.enc_blocks2 = nn.ModuleList([Block(in_ch, out_ch) for in_ch, out_ch in zip(enc_chs[:-1], enc_chs[1:])])  # encoder blocks
 
         # self.gcn = GCN(384, 384, 0.3, num_stage=0, node_n=384)
 
     def forward(self, x):
         # encode
+        x2 = x.clone()
         enc_features = []
+        enc_features2 = []
         for block in self.enc_blocks[:-1]:
             x = block(x)  # pass through the block
             enc_features.append(x)  # save features for skip connections
             x = self.pool(x)  # decrease resolution
+
+        for block in self.enc_blocks2[:-1]:
+            x2 = block(x2)  # pass through the block
+            enc_features2.append(x2)  # save features for skip connections
+            x2 = self.pool(x2)  # decrease resolution
+        
         x = self.enc_blocks[-1](x)
         # decode
-        for block, upconv, feature in zip(self.dec_blocks, self.upconvs, enc_features[::-1]):
+        for block, upconv, feature, feature2 in zip(self.dec_blocks, self.upconvs, enc_features[::-1], enc_features2[::-1]):
             x = upconv(x)  # increase resolution
-            x = torch.cat([x, feature], dim=1)  # concatenate skip features
+            x = torch.cat([x, feature, feature2], dim=1)  # concatenate skip features
             x = block(x)  # pass through the block
 
         return self.head(x) #.squeeze(dim=1)  # reduce to 1 channel,
@@ -263,21 +293,21 @@ def main():
     # reshape the image to simplify the handling of skip connections and maxpooling
     train_dataset = RoadDataset(train_path, device, augment=True, resize_to=(384, 384))
     val_dataset = RoadDataset(val_path, device, augment=False, resize_to=(384, 384))
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=4, shuffle=True)
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=4, shuffle=True)
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=2, shuffle=True)
+    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=2, shuffle=True)
     model = UNet().to(device)
     loss_fn = nn.BCEWithLogitsLoss()
     metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
     optimizer = torch.optim.Adam(model.parameters())
     n_epochs = 40
 
-    try:
-        train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
-    except Exception as e:
-        print(e)
-    finally:
-        print("saving model")
-        torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
+    #try:
+    train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
+    #except Exception as e:
+    #    print(e)
+    #finally:
+    print("saving model")
+    torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
 
 
 if __name__ == '__main__':
