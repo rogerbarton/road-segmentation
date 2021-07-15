@@ -108,9 +108,9 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
     history = {}  # collects metrics at the end of each epoch
 
     print('Model created with {} trainable parameters'.format(count_parameters(model)))
-
+    best_val_loss = 999999
     for epoch in range(n_epochs):  # loop over the dataset multiple times
-
+        print(f"training epoch {epoch}")
         # initialize metric list
         metrics = {'loss': [], 'val_loss': []}
         for k, _ in metric_fns.items():
@@ -151,6 +151,12 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         for k, v in history[epoch].items():
           writer.add_scalar(k, v, epoch)
         print(' '.join(['\t- '+str(k)+' = '+str(v)+'\n ' for (k, v) in history[epoch].items()]))
+        print(f"saved epoch {epoch} as model_temp.pht")
+        if metrics["val_loss"] < best_val_loss:
+            print(f"saved best model so far in epoch {epoch} with val_loss {metrics["val_loss"]}")
+            best_val_loss = metrics["val_loss"]
+            torch.save(model.state_dict(), ("model_best.pth"))
+        torch.save(model.state_dict(), ("model_temp.pth"))
 
     print('Finished Training')
 
