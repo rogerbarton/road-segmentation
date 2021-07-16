@@ -108,16 +108,16 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
     history = {}  # collects metrics at the end of each epoch
 
     print('Model created with {} trainable parameters'.format(count_parameters(model)))
-
+    best_val_acc = None
     for epoch in range(n_epochs):  # loop over the dataset multiple times
-
+        print(f"training epoch {epoch}")
         # initialize metric list
         metrics = {'loss': [], 'val_loss': []}
         for k, _ in metric_fns.items():
             metrics[k] = []
             metrics['val_'+k] = []
         
-        pbar = tqdm(train_dataloader, desc=f'Epoch {epoch+1}/{n_epochs}')
+        pbar = tqdm(train_dataloader, desc=f'Epoch {epoch+1}/{n_epochs}', total=len(train_dataloader))
         # training
         model.train()
         for (x, y) in pbar:
@@ -149,8 +149,14 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         # summarize metrics, log to tensorboard and display
         history[epoch] = {k: sum(v) / len(v) for k, v in metrics.items()}
         for k, v in history[epoch].items():
-          writer.add_scalar(k, v, epoch)
+            writer.add_scalar(k, v, epoch)
         print(' '.join(['\t- '+str(k)+' = '+str(v)+'\n ' for (k, v) in history[epoch].items()]))
+        torch.save(model.state_dict(), ("model_temp.pth"))
+        print(f"saved epoch {epoch} as model_temp.pht")
+        if best_val_acc is None or history[epoch]["val_acc"] > best_val_acc:
+            torch.save(model.state_dict(), ("model_best.pth"))
+            print(f"saved best model so far in epoch {epoch} with val_acc {history[epoch]['val_acc']}")
+            best_val_acc = history[epoch]["val_acc"]
 
     print('Finished Training')
 
