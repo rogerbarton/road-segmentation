@@ -19,7 +19,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.notebook import tqdm
 from dataset import RoadDataset
 import datetime
-
+import traceback
 
 # some constants
 PATCH_SIZE = 16  # pixels per side of square patches
@@ -281,6 +281,7 @@ def main():
     try:
         train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
     except Exception as e:
+        traceback.print_exc()
         print(e)
     finally:
         print("saving model")

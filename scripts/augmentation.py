@@ -9,10 +9,10 @@ import os
 
 def flip(image, mask):
     out = []
-    if random.random() < 0.7:
-        out.append((F.hflip(image), F.hflip(mask)))
-    if random.random() < 0.7:
-        out.append((F.vflip(image), F.vflip(mask)))
+    # if random.random() < 0.7:
+    out.append((F.hflip(image), F.hflip(mask)))
+    # if random.random() < 0.7:
+    #     out.append((F.vflip(image), F.vflip(mask)))
     return out
 
 
@@ -24,10 +24,11 @@ def rotate(image, mask):
             angle = random.randint(45 * i, 45 * (i + 1))
             image2 = F.rotate(image, angle)
             mask3 = F.rotate(mask, angle)
+            out.append((image2, mask3))
             # out.append((F.rotate(image, angle, expand=True), F.rotate(mask, angle, expand=True)))
             # do a center crop and resize, in order to remove black borders
             # need to find biggest square
-
+            """
             length = int(
                 image.size[0]
                 / (
@@ -40,6 +41,7 @@ def rotate(image, mask):
             cropped_mask = F.center_crop(mask3, [length, length])
             cropped_mask = F.resize(cropped_mask, image.size)
             out.append((cropped, cropped_mask))
+            """
     return out
 
 
@@ -126,7 +128,7 @@ def main():
         mask_name = mask_path[:-4]
         images_to_process = [(image, mask)]
         t = []
-        images_to_process.extend(invert(image, mask))
+        # images_to_process.extend(invert(image, mask))
         for (i, m) in images_to_process:
             n_flips = 1
             if harder:
@@ -135,15 +137,18 @@ def main():
                 t += flip(i, m)
         images_to_process += t
         t = []
+        
         for (i, m) in images_to_process:
             n_rots = 1
             if harder:
                 n_rots = random.randint(1,2)
             for _ in range(n_rots):
-                t += rotate(i, m)
+                # t += rotate(i, m)
                 t += rotate_90(i, m)
         images_to_process.extend(t)
         t = []
+        
+        """
         for (i, m) in images_to_process:
             n_crops = random.randint(0, 4)
             if harder:
@@ -151,6 +156,7 @@ def main():
             for _ in range(n_crops):
                 t += crop(i, m)
         images_to_process.extend(t)
+        """
         print(len(images_to_process))
         for i, (img_aug, mask_aug) in enumerate(images_to_process):
             img_aug.save(img_name + f"_aug{i}.png")

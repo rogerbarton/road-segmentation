@@ -64,12 +64,14 @@ class DenseCRF(object):
         d = dcrf.DenseCRF2D(W, H, C)
         d.setUnaryEnergy(U)
         #d.addPairwiseGaussian(sxy=self.pos_xy_std, compat=self.pos_w)
-        d.addPairwiseGaussian(sxy=(3,3), compat=3, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
-        #d.addPairwiseBilateral(
-        #    sxy=self.bi_xy_std, srgb=self.bi_rgb_std, rgbim=image, compat=self.bi_w
-        #)
-        d.addPairwiseBilateral(sxy=(80,80), srgb=(13,13,13), rgbim=image, compat=10, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
+        # d.addPairwiseGaussian(sxy=(3,3), compat=3, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
+        # #d.addPairwiseBilateral(
+        # #    sxy=self.bi_xy_std, srgb=self.bi_rgb_std, rgbim=image, compat=self.bi_w
+        # #)
+        # d.addPairwiseBilateral(sxy=(80,80), srgb=(13,13,13), rgbim=image, compat=10, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
 
+        d.addPairwiseGaussian(sxy=(0.05,0.05), compat=15, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
+        d.addPairwiseBilateral(sxy=(120,120), srgb=(40,40,40), rgbim=image, compat=8, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
         Q = d.inference(self.iter_max)
         Q = np.array(Q).reshape((C, H, W))
 
@@ -84,7 +86,7 @@ def main():
 
     print(args.model)
     model = UNet().to(device)
-    model.load_state_dict(torch.load(args.model[0]))
+    model.load_state_dict(torch.load(args.model[0], map_location=device))
     model.eval()
 
     # predict on test set
@@ -152,7 +154,7 @@ def main():
 
     #test_pred = morphological_postprocessing(test_pred)
 
-    create_submission(test_pred, test_filenames, submission_filename='unet_postprocessed_submission.csv')
+    create_submission(test_pred, test_filenames, submission_filename='unet_postprocessed_logitsloss_submission.csv')
 
 
 if __name__ == '__main__':
