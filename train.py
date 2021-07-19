@@ -166,9 +166,10 @@ class Block(nn.Module):
     def __init__(self, in_ch, out_ch):
         super().__init__()
         self.block = nn.Sequential(nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, padding=1),
-                                   nn.ReLU(),
                                    nn.BatchNorm2d(out_ch),
+                                   nn.ReLU(),
                                    nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=3, padding=1),
+                                   nn.BatchNorm2d(out_ch),
                                    nn.ReLU())
 
     def forward(self, x):
@@ -211,7 +212,7 @@ class ImageDataset(torch.utils.data.Dataset):
         
 class UNet(nn.Module):
     # UNet-like architecture for single class semantic segmentation.
-    def __init__(self, chs=(3,64,128,256,512,1024)):
+    def __init__(self, chs=(3,16,32,64,128,256,512,1024)):
         super().__init__()
         enc_chs = chs  # number of channels in the encoder
         dec_chs = chs[::-1][:-1]  # number of channels in the decoder
