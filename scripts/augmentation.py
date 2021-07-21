@@ -85,69 +85,92 @@ def invert(image, mask):
 
 
 def main():
-    with open('notes.txt') as f:
+    # todo different 78 neue groundtruth
+    # todo different output paths
+    fixed_groundtruths = [33, 41, 65, 78, 96, 99]
+    with open("notes.txt") as f:
         harder_images = [int(val) for val in f.readlines()]
     harder_images = [str(val).zfill(3) for val in harder_images]
-    harder_images = ['satImage_' + val + '.png' for val in harder_images]
+    harder_images = ["satImage_" + val + ".png" for val in harder_images]
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--training_path",
-        help="path of the training folder, containing groundtruth and images",
-        default="./training",
-    )
+    # parser.add_argument(
+    #     "--training_path",
+    #     help="path of the training folder, containing groundtruth and images",
+    #     default="./training",
+    # )
     parser.add_argument(
         "--clean", help="delete augmented data", default=False, action="store_true"
     )
+    parser.add_argument(
+        "--validation",
+        help="augment the validation set",
+        default=False,
+        action="store_true",
+    )
     parser.add_argument("--seed", help="fixed random seed", default=17, type=int)
     args = parser.parse_args()
+    output_training = "training_augmented"
+    output_validation = "validation_augmented"
+    if not os.path.isdir(output_training):
+        os.makedirs(f"{output_training}/images")
+        os.makedirs(f"{output_training}/groundtruth")
+    if not os.path.isdir(output_validation):
+        os.makedirs(f"{output_validation}/images")
+        os.makedirs(f"{output_validation}/groundtruth")
+    source_dir = "./training"
+    output_dir = output_training
+    if args.validation:
+        source_dir = "./validation"
+        output_dir = output_validation
     if args.clean:
-        augmented_images = [
-            x for x in glob(args.training_path + "/images/*.png") if "_aug" in x
-        ]
-        augmented_masks = [
-            x for x in glob(args.training_path + "/groundtruth/*.png") if "_aug" in x
-        ]
-        for path in augmented_images + augmented_masks:
+        to_delete = [x for x in glob("training/images/*.png") if "_aug" in x]
+        to_delete += [x for x in glob("training/groundtruth/*.png") if "_aug" in x]
+        to_delete += [x for x in glob("validation/images/*.png") if "_aug" in x]
+        to_delete += [x for x in glob("validation/groundtruth/*.png") if "_aug" in x]
+        to_delete += [x for x in glob(output_training + "/images/*.png")]
+        to_delete += [x for x in glob(output_training + "/groundtruth/*.png")]
+        to_delete += [x for x in glob(output_validation + "/images/*.png")]
+        to_delete += [x for x in glob(output_validation + "/groundtruth/*.png")]
+        for path in to_delete:
             os.remove(path)
         return
-    original_images = [
-        x for x in glob(args.training_path + "/images/*.png") if "aug" not in x
-    ]
-    harder_images = [args.training_path + "/images/" + x for x in harder_images]
+
     random.seed(args.seed)
-    for i, img in enumerate(original_images):
+    original_images = [x for x in glob(source_dir + "/images/*.png") if "aug" not in x]
+    harder_images = [source_dir + "/images/" + x for x in harder_images]
+    for i, img_path in enumerate(original_images):
         harder = False
-        if img in harder_images:
+        if img_path in harder_images:
             print("processing harder image")
             harder = True
         print(f"processing image {i} of {len(original_images)}")
-        image = Image.open(img)
-        mask_path = img.replace("images", "groundtruth")
+        image = Image.open(img_path)
+        mask_path = img_path.replace("images", "groundtruth")
         mask = Image.open(mask_path)
-        img_name = img[:-4]
-        mask_name = mask_path[:-4]
+        img_name = os.path.basename(img_path)[:-4]
+        mask_name = os.path.basename(mask_path)[:-4]
         images_to_process = [(image, mask)]
         t = []
         # images_to_process.extend(invert(image, mask))
         for (i, m) in images_to_process:
             n_flips = 1
             if harder:
-                n_flips = random.randint(1,2)
+                n_flips = random.randint(1, 2)
             for _ in range(n_flips):
                 t += flip(i, m)
         images_to_process += t
         t = []
-        
+
         for (i, m) in images_to_process:
             n_rots = 1
             if harder:
-                n_rots = random.randint(1,2)
+                n_rots = random.randint(1, 2)
             for _ in range(n_rots):
                 # t += rotate(i, m)
                 t += rotate_90(i, m)
         images_to_process.extend(t)
         t = []
-        
+
         """
         for (i, m) in images_to_process:
             n_crops = random.randint(0, 4)
@@ -159,8 +182,8 @@ def main():
         """
         print(len(images_to_process))
         for i, (img_aug, mask_aug) in enumerate(images_to_process):
-            img_aug.save(img_name + f"_aug{i}.png")
-            mask_aug.save(mask_name + f"_aug{i}.png")
+            img_aug.save(f"{output_dir}/images/{img_name}_aug{i}.png")
+            mask_aug.save(f"{output_dir}/groundtruth/{mask_name}_aug{i}.png")
     # noise
     # maybe occlusion
 
