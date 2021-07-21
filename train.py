@@ -37,7 +37,7 @@ def np_to_tensor(x, device):
         return torch.from_numpy(x).contiguous().pin_memory().to(device=device, non_blocking=True)
 
 
-def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs):
+def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs, name):
     # training loop
     logdir = './tensorboard/net'
     writer = SummaryWriter(logdir)  # tensorboard writer (can also log images)
@@ -91,7 +91,7 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         torch.save(model.state_dict(), ("model_temp.pth"))
         print(f"saved epoch {epoch} as model_temp.pht")
         if best_val_acc is None or history[epoch]["val_acc"] > best_val_acc:
-            torch.save(model.state_dict(), ("model_best.pth"))
+            torch.save(model.state_dict(), (name))
             print(f"saved best model so far in epoch {epoch} with val_acc {history[epoch]['val_acc']}")
             best_val_acc = history[epoch]["val_acc"]
 
@@ -147,28 +147,32 @@ def main():
         help="What optimizer to use, choose from [adam, SGD, adamax]",
         default="adam"
     )
+    parser.add_argument(
+        "--output",
+        help="Name of the output file",
+        default=""
+    )
     parser.add_argument("--n_epochs", help="How many epochs to perform", default=40, type=int)
     parser.add_argument("--seed", help="fixed random seed", default=17, type=int)
     parser.add_argument("--bs", help="batch size", default=4, type=int)
     args = parser.parse_args()
 
     random.seed(args.seed)
+    np.random.seed(seed=random.randint(0, 100000))
+    torch.manual_seed(random.randint(0, 100000))
 
     # paths to training and validation datasets
 
     if (args.pre_processing == "none"):
         train_path = 'training'
         val_path = 'validation'
-        test_path = 'test'
     elif (args.pre_processing == "altered_images" or args.pre_processing == "otf"):
-        # ToDo: fix paths with Gygi
-        train_path = 'training'
-        val_path = 'validation'
-        test_path = 'test'
+        train_path = 'training_augmented'
+        val_path = 'validation_augmented'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # reshape the image to simplify the handling of skip connections and maxpooling
-    if (args.pre_processing == "otf")
+    if (args.pre_processing == "otf"):
         train_dataset = RoadDataset(train_path, device, augment=True, resize_to=(384, 384))
         val_dataset = RoadDataset(val_path, device, augment=False, resize_to=(384, 384))
     else:
@@ -181,7 +185,6 @@ def main():
         train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
         val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.bs, shuffle=True)
     elif (args.pre_processing == "none" or args.pre_processing == "altered_images" or args.pre_processing == "otf"):
-        # ToDo: use not - so good dataloader
         train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
         val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.bs, shuffle=True)
 
@@ -212,14 +215,19 @@ def main():
 
     n_epochs = args.n_epochs
 
+    if (args.output == ""):
+        model_name = args.model + "_" + args.optimizer + "_lr=" + str(args.lr) + "_" + args.loss + "_" + args.pre_processing
+    else:
+        model_name = args.output
+
     try:
-        train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
+        train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs, "model_inter_" + model_name + ".pth")
     except Exception as e:
         traceback.print_exc()
         print(e)
     finally:
         print("saving model")
-        torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
+        torch.save(model.state_dict(), ("model_" + model_name + ".pth"))
 
 
 if __name__ == '__main__':
