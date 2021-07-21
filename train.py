@@ -158,6 +158,7 @@ def main():
     args = parser.parse_args()
 
     random.seed(args.seed)
+    # since random is fixed, this gives us some non-random seeds
     np.random.seed(seed=random.randint(0, 100000))
     torch.manual_seed(random.randint(0, 100000))
 
