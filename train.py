@@ -37,7 +37,7 @@ def np_to_tensor(x, device):
         return torch.from_numpy(x).contiguous().pin_memory().to(device=device, non_blocking=True)
 
 
-def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs):
+def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs, name):
     # training loop
     logdir = './tensorboard/net'
     writer = SummaryWriter(logdir)  # tensorboard writer (can also log images)
@@ -91,7 +91,7 @@ def train(train_dataloader, eval_dataloader, model, loss_fn, metric_fns, optimiz
         torch.save(model.state_dict(), ("model_temp.pth"))
         print(f"saved epoch {epoch} as model_temp.pht")
         if best_val_acc is None or history[epoch]["val_acc"] > best_val_acc:
-            torch.save(model.state_dict(), ("model_best.pth"))
+            torch.save(model.state_dict(), (name))
             print(f"saved best model so far in epoch {epoch} with val_acc {history[epoch]['val_acc']}")
             best_val_acc = history[epoch]["val_acc"]
 
@@ -146,6 +146,11 @@ def main():
         "--optimizer",
         help="What optimizer to use, choose from [adam, SGD, adamax]",
         default="adam"
+    )
+    parser.add_argument(
+        "--output",
+        help="Name of the output file",
+        default=""
     )
     parser.add_argument("--n_epochs", help="How many epochs to perform", default=40, type=int)
     parser.add_argument("--seed", help="fixed random seed", default=17, type=int)
@@ -212,14 +217,19 @@ def main():
 
     n_epochs = args.n_epochs
 
+    if (args.output == ""):
+        model_name = args.model + "_" + args.optimizer + "_lr=" + str(args.lr) + "_" + args.loss + "_" + args.pre_processing
+    else:
+        model_name = args.output
+
     try:
-        train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs)
+        train(train_dataloader, val_dataloader, model, loss_fn, metric_fns, optimizer, n_epochs, "model_inter_" + model_name + ".pth")
     except Exception as e:
         traceback.print_exc()
         print(e)
     finally:
         print("saving model")
-        torch.save(model.state_dict(), ("model_" + str(datetime.datetime.now()) + ".pth"))
+        torch.save(model.state_dict(), ("model_" + model_name + ".pth"))
 
 
 if __name__ == '__main__':
