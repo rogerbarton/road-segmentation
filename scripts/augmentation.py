@@ -137,17 +137,27 @@ def main():
 
     random.seed(args.seed)
     original_images = [x for x in glob(source_dir + "/images/*.png") if "aug" not in x]
+    occluded_images = []
+    if not args.validation and os.path.isdir("training_occluded/images/"):
+        occluded_images = [
+            x
+            for x in glob("training_occluded/images/*.png")
+            if "_occl" in x and "aug" not in x
+        ]
     harder_images = [source_dir + "/images/" + x for x in harder_images]
-    for i, img_path in enumerate(original_images):
+    for i, img_path in enumerate(original_images + occluded_images):
         harder = False
         if img_path in harder_images:
             print("processing harder image")
             harder = True
-        print(f"processing image {i} of {len(original_images)}")
+        print(f"processing image {i} of {len(original_images + occluded_images)}")
         image = Image.open(img_path)
 
         mask_path = img_path.replace("images", "groundtruth")
-        if any(x in img_path for x in fixed_groundtruths):
+        if (
+            any(x in img_path for x in fixed_groundtruths)
+            and img_path in original_images
+        ):
             print(f"use fixed ground truth for image {img_path}")
             mask_path = img_path.replace("images", "fixed_groundtruth")
         mask = Image.open(mask_path)
@@ -185,9 +195,9 @@ def main():
         images_to_process.extend(t)
         """
         print(len(images_to_process))
-        for i, (img_aug, mask_aug) in enumerate(images_to_process):
-            img_aug.save(f"{output_dir}/images/{img_name}_aug{i}.png")
-            mask_aug.save(f"{output_dir}/groundtruth/{mask_name}_aug{i}.png")
+        for j, (img_aug, mask_aug) in enumerate(images_to_process):
+            img_aug.save(f"{output_dir}/images/{img_name}_aug{j}.png")
+            mask_aug.save(f"{output_dir}/groundtruth/{mask_name}_aug{j}.png")
     # noise
     # maybe occlusion
 
