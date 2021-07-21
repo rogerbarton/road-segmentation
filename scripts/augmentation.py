@@ -87,7 +87,7 @@ def invert(image, mask):
 def main():
     # todo different 78 neue groundtruth
     # todo different output paths
-    fixed_groundtruths = [33, 41, 65, 78, 96, 99]
+    fixed_groundtruths = ["033", "041", "065", "078", "096", "099"]
     with open("notes.txt") as f:
         harder_images = [int(val) for val in f.readlines()]
     harder_images = [str(val).zfill(3) for val in harder_images]
@@ -145,7 +145,11 @@ def main():
             harder = True
         print(f"processing image {i} of {len(original_images)}")
         image = Image.open(img_path)
+
         mask_path = img_path.replace("images", "groundtruth")
+        if any(x in img_path for x in fixed_groundtruths):
+            print(f"use fixed ground truth for image {img_path}")
+            mask_path = img_path.replace("images", "fixed_groundtruth")
         mask = Image.open(mask_path)
         img_name = os.path.basename(img_path)[:-4]
         mask_name = os.path.basename(mask_path)[:-4]
