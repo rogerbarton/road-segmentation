@@ -167,9 +167,8 @@ def main():
         train_path = 'training'
         val_path = 'validation'
     elif (args.pre_processing == "altered_images" or args.pre_processing == "otf"):
-        # ToDo: fix paths with Gygi
-        train_path = 'training'
-        val_path = 'validation'
+        train_path = 'training_augmented'
+        val_path = 'validation_augmented'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # reshape the image to simplify the handling of skip connections and maxpooling
@@ -186,7 +185,6 @@ def main():
         train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
         val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.bs, shuffle=True)
     elif (args.pre_processing == "none" or args.pre_processing == "altered_images" or args.pre_processing == "otf"):
-        # ToDo: use not - so good dataloader
         train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
         val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.bs, shuffle=True)
 
