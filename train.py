@@ -153,22 +153,22 @@ def main():
     args = parser.parse_args()
 
     random.seed(args.seed)
+    np.random.seed(seed=random.randint(0, 100000))
+    torch.manual_seed(random.randint(0, 100000))
 
     # paths to training and validation datasets
 
     if (args.pre_processing == "none"):
         train_path = 'training'
         val_path = 'validation'
-        test_path = 'test'
     elif (args.pre_processing == "altered_images" or args.pre_processing == "otf"):
         # ToDo: fix paths with Gygi
         train_path = 'training'
         val_path = 'validation'
-        test_path = 'test'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # reshape the image to simplify the handling of skip connections and maxpooling
-    if (args.pre_processing == "otf")
+    if (args.pre_processing == "otf"):
         train_dataset = RoadDataset(train_path, device, augment=True, resize_to=(384, 384))
         val_dataset = RoadDataset(val_path, device, augment=False, resize_to=(384, 384))
     else:
