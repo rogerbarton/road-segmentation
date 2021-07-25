@@ -1,4 +1,3 @@
-from train import UNet
 import torch
 import pydensecrf.densecrf as dcrf
 import pydensecrf.utils as utils
@@ -6,7 +5,7 @@ import argparse
 from glob import glob
 import numpy as np
 import cv2
-from train import load_all_from_path, np_to_tensor
+from train import np_to_tensor
 import re
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -14,11 +13,24 @@ from PIL import Image
 import pydensecrf.densecrf as dcrf
 import pydensecrf.utils as utils
 
+# uncomment for old unet
+# from train import UNet
+from models.u_net import UNet
 
 # some constants
 PATCH_SIZE = 16  # pixels per side of square patches
 VAL_SIZE = 10  # size of the validation set (number of images)
 CUTOFF = 0.25  # minimum average brightness for a mask patch to be classified as containing road
+
+
+def load_all_from_path(path):
+    # loads all HxW .pngs contained in path as a 4D np.array of shape (n_images, H, W, 3)
+    # images are loaded as floats with values in the interval [0., 1.]
+    return np.stack([np.array(Image.open(f)) for f in sorted(glob(path + '/*.png'))]).astype(np.float32) / 255.
+
+# def load_all_from_path_resize(path, resize_to=(400, 400)):
+#     return np.stack([cv2.resize(np.array(Image.open(f)), dsize=resize_to) for f in sorted(glob(path + '/*.png'))]).astype(np.float32) / 255.
+
 
 def morphological_postprocessing(imgs):
     out = []
@@ -154,7 +166,7 @@ def main():
 
     #test_pred = morphological_postprocessing(test_pred)
 
-    create_submission(test_pred, test_filenames, submission_filename='unet_postprocessed_logitsloss_submission.csv')
+    create_submission(test_pred, test_filenames, submission_filename='prediction.csv')
 
 
 if __name__ == '__main__':
