@@ -5,10 +5,10 @@ class Block(nn.Module):
     # a repeating structure composed of two convolutional layers with batch normalization and ReLU activations
     def __init__(self, in_ch, out_ch, kernel_size=3):
         super().__init__()
-        self.block = nn.Sequential(nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=kernel_size, padding=1),
+        self.block = nn.Sequential(nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=kernel_size, padding=(int)(kernel_size / 2)),
                                    nn.BatchNorm2d(out_ch),
                                    nn.ReLU(),
-                                   nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=kernel_size, padding=1),
+                                   nn.Conv2d(in_channels=out_ch, out_channels=out_ch, kernel_size=kernel_size, padding=(int)(kernel_size / 2)),
                                    nn.BatchNorm2d(out_ch), # changed batchnorm to be before activation
                                    nn.ReLU())
 

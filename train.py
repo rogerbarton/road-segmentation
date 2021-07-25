@@ -196,7 +196,7 @@ def main():
         model = UNet().to(device)
         metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
     elif (args.model == "new_unet"):
-        model = newnet().to(device)
+        model = newnet(kernel_size=args.kernel_size).to(device)
         metric_fns = {'acc': accuracy_fn, 'patch_acc': patch_accuracy_fn}
 
     if (args.loss == "BCE"):
