@@ -217,7 +217,7 @@ def main():
     n_epochs = args.n_epochs
 
     if (args.output == ""):
-        model_name = args.model + "_" + args.optimizer + "_lr=" + str(args.lr) + "_" + args.loss + "_" + args.pre_processing
+        model_name = args.model + "_" + str(args.n_epochs) + "_lr=" + str(args.lr) + "_" + args.loss + "_" + args.pre_processing + "_ks=" + str(args.kernel_size)
     else:
         model_name = args.output
 
