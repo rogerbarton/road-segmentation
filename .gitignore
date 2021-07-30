@@ -130,7 +130,10 @@ dmypy.json
 
 # dataset
 training/
+training_aug/
+training_occluded/
 validation/
+validation_aug/
 test/
 
 venv/
