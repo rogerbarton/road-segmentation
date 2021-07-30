@@ -54,7 +54,7 @@ The following list contains all possible command line arguments:
 | --- | --- |
 | --model {`unet`, `new_unet`} | Which type model to train, default: `new_unet`|
 | --kernel_size {`3`, `5`, `7`} | Choose the size of the kernels for `new_unet`, default: `3` |
-| --post_process {`Morph4`, `Morph7`, `CRF`, `All`, `None`} | Which post-processing approach to use, default: `None` |
+| --post_process {`Morph4`, `Morph7`, `CRF`, `All`, `None`} | Which post-processing approach to use, default: `All` |
 | --porcess_one {`True`, `False`} | Whether only one image should be processed, for testing purposes, default: `False`|
 
 ### Kaggle submission
