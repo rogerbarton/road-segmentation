@@ -1,5 +1,4 @@
-# road-segmentation
-Road Segmentation for CIL
+# Road Segmentation for Computer Intelligence Lab
 
 ## installation
 The packages needed are in requirements.txt, install them using pip:
@@ -36,9 +35,12 @@ The training is done using the `train.py` script, which has the following comman
 | --lr `LR` | What learining rate to use, default: `0.001` |
 | --optimizer {`adam`, `sgd`, `adamax`} | What optimizer to use, default: `adam` |
 | --output `OUTPUT` | Name of the output file |
-| --n_epochs `EPOCHS` | How many epochs to train: ` |
+| --n_epochs `EPOCHS` | How many epochs to train, default: `40` |
 | --seed `SEED` | Fixed random seed, default: `17` |
 | --bs `BS` | What batch size to use, default: `4` |
 
 The training script produces the final weights as an output, by default called `"model_new_unet_....pth"` as well as the weights of the epoch with the highest validation accuracy, called `"model_inter_new_unet_....pth"`. These files can be used as input for the `post_process.py` scritp.
+
+### Kaggle submission
+Our kaggle submission was trained with the parameters and preprocessing in the `run_kaggle.sh` script, which can be used to replicate our score.
 ## Post Processing
