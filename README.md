@@ -1,5 +1,7 @@
 # Road Segmentation for Computer Intelligence Lab
 
+This repo contains all code for our groups approach to the road- segmentation task. Below you will find an explanation on how to use our training and post- processing scripts, as well as an explanation on how to recreate the results from kaggle.
+
 ## installation
 The packages needed are in requirements.txt, install them using pip:
 
