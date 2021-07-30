@@ -12,6 +12,7 @@ from PIL import Image
 
 import pydensecrf.densecrf as dcrf
 import pydensecrf.utils as utils
+import torchvision.transforms.functional as F
 
 # uncomment for old unet
 # from train import UNet
@@ -83,21 +84,100 @@ class DenseCRF(object):
         # d.addPairwiseBilateral(sxy=(80,80), srgb=(13,13,13), rgbim=image, compat=10, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
 
         d.addPairwiseGaussian(sxy=(0.05,0.05), compat=15, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
-        d.addPairwiseBilateral(sxy=(120,120), srgb=(40,40,40), rgbim=image, compat=8, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
+        d.addPairwiseBilateral(sxy=(121,121), srgb=(40,40,40), rgbim=image, compat=8, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
         Q = d.inference(self.iter_max)
         Q = np.array(Q).reshape((C, H, W))
 
         return Q
+
+
+def generate_flips(image):
+    
+    out = [image]
+    flipped = F.hflip(image)
+    out.append(flipped)
+        
+    angles = [90, 180, 270]
+    for a in angles:
+        image_rot = F.rotate(image, a)
+        out.append(image_rot)
+
+        image_rot = F.rotate(flipped, a)
+        out.append(image_rot)
+    return out
+
+
+def generate_average(images):
+    images = torch.from_numpy(images)
+
+    right_orientation = []
+    right_orientation.append(images[0].detach().cpu().numpy())
+    
+    right_orientation.append(F.hflip(images[1]).detach().cpu().numpy())
+
+    right_orientation.append(F.rotate(images[2], 270).detach().cpu().numpy())
+    right_orientation.append(F.hflip(F.rotate(images[3], 270)).detach().cpu().numpy())
+
+    right_orientation.append(F.rotate(images[4], 180).detach().cpu().numpy())
+    right_orientation.append(F.hflip(F.rotate(images[5], 180)).detach().cpu().numpy())
+
+    right_orientation.append(F.rotate(images[6], 90).detach().cpu().numpy())
+    right_orientation.append(F.hflip(F.rotate(images[7], 90)).detach().cpu().numpy())
+
+    
+
+    right_orientation = np.array(right_orientation).squeeze()
+    
+    plt.imsave('rot0.jpeg', right_orientation[0])
+    plt.imsave('rot1.jpeg', right_orientation[1])
+    plt.imsave('rot2.jpeg', right_orientation[2])
+    plt.imsave('rot3.jpeg', right_orientation[3])
+    plt.imsave('rot4.jpeg', right_orientation[4])
+    plt.imsave('rot5.jpeg', right_orientation[5])
+    plt.imsave('rot6.jpeg', right_orientation[6])
+    plt.imsave('rot7.jpeg', right_orientation[7])
+
+    avg = sum(right_orientation)
+    avg = (avg * 0.25).clip(0, 1)
+    plt.imsave('avg.jpeg', avg)
+
+    return np.expand_dims(avg, axis=0)
 
 def main():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     parser = argparse.ArgumentParser()
 
     parser.add_argument('model', metavar='model', type=str, nargs=1, help='the model')
+    parser.add_argument(
+        "--model",
+        help="which model to train, choose from [cnn, unet, new_unet]",
+        default="new_unet",
+    )
+    parser.add_argument(
+        "--kernel_size",
+        help="The kernel size to use, choose from [3, 5, 7]",
+        default=3, type=int
+    )
+    parser.add_argument(
+        "--post_process",
+        help="The post porcess approach used, chose from [Morph4, Morph7, CRF, All, None]",
+        default="All",
+    )
+    parser.add_argument(
+        "--process_one",
+        help="If you set this falg to true, only one image will be proicessed, to make visual analysis easier",
+        default=False, type=bool
+    )
+    parser.add_argument(
+        "--multiple",
+        help="If you set this falg to true, the image will be analyzed in 8 different rotations",
+        default=False, type=bool
+    )
+
     args = parser.parse_args()
 
     print(args.model)
-    model = UNet().to(device)
+    model = UNet(kernel_size=args.kernel_size).to(device)
     model.load_state_dict(torch.load(args.model[0], map_location=device))
     model.eval()
 
@@ -105,22 +185,36 @@ def main():
     test_path = 'test'
     test_filenames = (glob(test_path + '/*.png'))
     test_images = load_all_from_path(test_path)
-    #test_images = np.array([test_images[0], test_images[1]])
+
+    if args.process_one:
+        test_images = np.array([test_images[0]])
     # batch_size = test_images.shape[0]
     size = test_images.shape[1:3]
     # we also need to resize the test images. This might not be the best ideas depending on their spatial resolution.
     test_images = np.stack([cv2.resize(img, dsize=(384, 384)) for img in test_images], 0)
     test_images = np_to_tensor(np.moveaxis(test_images, -1, 1), device)
 
-    test_pred = [model(t).detach().cpu().numpy() for t in test_images.unsqueeze(1)]
+    test_pred = []
+    if not args.multiple:
+        test_pred = [model(t).detach().cpu().numpy() for t in test_images.unsqueeze(1)]
+        test_pred = np.concatenate(test_pred, 0)
+
+    else:
+        for t in test_images.unsqueeze(1):
+            images = generate_flips(t)
+            ret_pred = []
+            for f in images:
+                ret_pred.append(model(f).detach().cpu().numpy())
+            ret_avg = generate_average(np.array(ret_pred))
+            plt.imsave('retavg.jpeg', ret_avg[0])
+            test_pred.append(ret_avg) 
 
 
-    test_pred = np.concatenate(test_pred, 0)
     test_pred = np.moveaxis(test_pred, 1, -1)  # CHW to HWC
     test_pred = np.stack([cv2.resize(img, dsize=size) for img in test_pred], 0)  # resize to original shape
 
     post_processor = DenseCRF(
-        iter_max=10,    # 10
+        iter_max=5,    # 10
         pos_xy_std=3,   # 3
         pos_w=3,        # 3
         bi_xy_std=140,  # 121, 140
@@ -134,29 +228,40 @@ def main():
 
     output = []
 
-    for i, pred in enumerate(test_pred):
-        print("Processing image " + str(i))
-        raw_img = raw_images[i]
-        raw_img = raw_img.astype(np.uint8)
-        plt.imsave('raw.jpeg', raw_img)
-        plt.imsave('first.jpeg', pred)
-        plt.imsave('sec.jpeg', inv_func(pred))
-        probs_labels = np.array([inv_func(pred), pred])
-        prob = post_processor(raw_img, probs_labels)
-        output.append(np.argmax(prob, axis=0).astype(np.uint8))
-        plt.imsave('post_proc.jpeg', output[i])
+    # Apply the crf
+    # we save intermediate images for visual analysis
 
-    test_pred = np.array(output)
+    if args.post_process == "CRF" or args.post_process == "All":
+
+        for i, pred in enumerate(test_pred):
+            print("Processing image " + str(i))
+            raw_img = raw_images[i]
+            raw_img = raw_img.astype(np.uint8)
+            plt.imsave('raw.jpeg', raw_img)
+            plt.imsave('first.jpeg', pred)
+            plt.imsave('sec.jpeg', inv_func(pred))
+            probs_labels = np.array([inv_func(pred), pred])
+            prob = post_processor(raw_img, probs_labels)
+            output.append(np.argmax(prob, axis=0).astype(np.uint8))
+            plt.imsave('post_proc.jpeg', output[i])
+
+        test_pred = np.array(output)
 
     
 
-    """
+    
     # morphological postprocessing
+    if args.post_process == "Morph4":
+        kernel = np.ones((3, 3), np.uint8)
+        test_pred = np.stack([cv2.erode(img, kernel, iterations=4) for img in test_pred], 0)
+        test_pred = np.stack([cv2.dilate(img, kernel, iterations=4) for img in test_pred], 0)
     
-    kernel = np.ones((3, 3), np.uint8)
-    test_pred = np.stack([cv2.erode(img, kernel, iterations=7) for img in test_pred], 0)
-    test_pred = np.stack([cv2.dilate(img, kernel, iterations=7) for img in test_pred], 0)
-    """
+    # morphological postprocessing
+    if args.post_process == "Morph7" or args.post_process == "All":
+        kernel = np.ones((3, 3), np.uint8)
+        test_pred = np.stack([cv2.erode(img, kernel, iterations=7) for img in test_pred], 0)
+        test_pred = np.stack([cv2.dilate(img, kernel, iterations=7) for img in test_pred], 0)
+
     
     # now compute labels
     test_pred = test_pred.reshape((-1, size[0] // PATCH_SIZE, PATCH_SIZE, size[0] // PATCH_SIZE, PATCH_SIZE))
