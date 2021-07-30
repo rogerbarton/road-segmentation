@@ -57,6 +57,5 @@ The following list contains all possible command line arguments:
 | --post_process {`Morph4`, `Morph7`, `CRF`, `All`, `None`} | Which post-processing approach to use, default: `All` |
 | --porcess_one {`True`, `False`} | Whether only one image should be processed, for testing purposes, default: `False`|
 
-### Kaggle submission
+## Kaggle submission
 Our kaggle submission was trained with the parameters and preprocessing in the `run_kaggle.sh` script, which can be used to replicate our score. It will generate a file called `prediction.csv` which is the right format.
-## Post Processing
