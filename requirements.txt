@@ -2,7 +2,7 @@ scikit-learn==0.24.2
 pydensecrf @ git+https://github.com/lucasb-eyer/pydensecrf.git@0d53acbcf5123d4c88040fe68fbb9805fc5b2fb9
 opencv-python==4.5.1.48
 notebook==6.4.0
-numpy==1.21.0
+numpy==1.22.0
 matplotlib==3.4.2
 tqdm==4.61.2
 torch==1.9.0
